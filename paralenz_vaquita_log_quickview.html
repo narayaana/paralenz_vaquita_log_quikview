@@ -1,0 +1,234 @@
+<html>
+
+<!--
+    code inspired from youtube tutorial: https://www.youtube.com/watch?v=5H1s59jBmpw
+-->
+    <head>
+        <title>Your Vaquita Log</title>
+        <style type="text/css">
+            .chartBox{
+                width: 80%;
+                background: #132f32;
+            },
+            .mediaBox{
+                width: 80%;
+                background: #132f32;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="chartBox">
+            <table border="0">
+                <tr>
+                    <td width="66%">
+            <canvas id="paralenzLog"></canvas>
+        </td><td>
+            <div class="mediaBox" style="visibility:visible;">
+                <img id="logImage" src="" alt="">
+                <video id="logVideo" width="320" height="240" controls autoplay>
+                    <source id="" src="" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+            </div>
+        </td>
+        </tr>
+            </table>
+          </div>
+
+          <div class="buttonBox">
+            <input type="file" id="paralenzLogFile" accept=".csv"/>
+            <button id="uploadLogFile">Submit file</button>
+            <hr/>
+            <button onclick="updateChart('logDepth')">Show graph</button>
+          </div>
+
+
+
+
+          
+          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+          <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+          
+          <script>
+
+            // construct values
+
+            function logValue(id, dateTime, depth, mediaName) {
+
+                this.dateTime = new Date(dateTime);
+                this.time = dateTime.substring(11,19);
+                this.depth = depth;
+                this.mediaName = mediaName;
+                this.title = "Depth : " + depth + "\r\nTime : " + dateTime;
+                this.mediaType = (mediaName.length > 24)?mediaName.substring(24,27):"";
+                this.preview = (mediaName.length > 15)?"./DCIM/100PRLNZ/"+mediaName.substring(15,23)+"_LOWRES.JPG":"";
+                this.id = this.time;
+            }
+
+            logValue.prototype.toString = function () {
+                    return this.id;
+            };
+
+            // setup
+            const data = {
+                labels: ['00:00:00','23:59:59'],
+                datasets: [{
+                  label: 'logged Depth',
+                  data: [0, 100]
+                }]
+            };
+
+
+            // config
+            var logImage = new Image(32,32);
+
+            const configuration = {
+                type: 'line',
+                data,
+                options: {
+                    elements: {
+                        line : {
+                            borderWidth : 1,
+                            borderColor : "rgba(164,215,184,1)",
+                            backgroundColor : "rgba(164,215,184,1)",
+                        },
+                        point:{
+                            radius : 1,
+                            borderColor : function(context) {
+                                
+                                const defaultColor = "rgba(164,215,184,1)";
+
+                                if (context.raw.preview == null) return defaultColor;
+
+                                switch(context.raw.mediaType) {
+                                    case "MP4":
+                                        return "rgba(255,0,0,1)";
+                                    case "JPG":
+                                        return "rgba(0,0,255,1)";
+                                    default:
+                                        return defaultColor;
+                                    }
+                                },
+                            backgroundColor : function(context) {
+                                const defaultColor = "rgba(164,215,184,1)";
+
+                                if (context.raw.preview == null) return defaultColor;
+
+                                switch(context.raw.mediaType) {
+                                    case "MP4":
+                                        return "rgba(255,0,0,1)";
+                                    case "JPG":
+                                        return "rgba(0,0,255,1)";
+                                    default:
+                                        return defaultColor;
+                                    }
+                                }
+                        }
+                    },
+                    parsing: {
+                        yAxisKey : 'depth',
+                        xAxisKey : 'time'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            reverse: true,
+                        }
+                    },
+                    plugins: {
+                        title : {
+                            display : true,
+                            text : 'Vaquita Log'
+                        },
+                        tooltip: {
+                            usePointStyle: true,
+                            callbacks:{
+                                labelPointStyle: (context) => {
+
+                                    logImage = new Image(32,32);
+                                    logImage.src = context.raw.preview;
+    
+
+                                    return {
+                                        pointStyle: logImage
+
+                                    }
+                                },
+                                title: function(tooltipItem) {
+                                    return tooltipItem[0].raw.title;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // render
+            var paralenzLog = new Chart(
+                document.getElementById('paralenzLog'),
+                configuration
+            );
+
+            // papa parse
+
+            var logValues = [];
+
+            const uploadLogFile = document.getElementById('uploadLogFile').addEventListener('click',()=>{
+                Papa.parse(document.getElementById('paralenzLogFile').files[0],
+                {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results){
+                        logValues = [];
+
+                        for(i=0;i < results.data.length;i++){
+
+                                logValues.push(
+                                    new logValue(
+                                         results.data[i].time
+                                        ,results.data[i].ISO8601
+                                        ,results.data[i].Depth
+                                        ,results.data[i]["Image/video-file"]
+                                        )
+                                );
+
+                        };
+                    }
+                });
+            });
+
+            function updateChart(label){
+
+                if(paralenzLog != null){
+                    paralenzLog.destroy();
+                }
+                paralenzLog = new Chart(
+                    document.getElementById('paralenzLog'),
+                    configuration
+                );
+                //paralenzLog.canvas.onClick = clickOnPoint;
+                paralenzLog.data.datasets[0].data = logValues;
+                paralenzLog.update();
+            };
+
+            
+            function clickOnPoint(clickedPoint){
+                console.log(clickedPoint);
+                const points = paralenzLog.getElementsAtEventForMode(clickedPoint,'nearest',{intersect: true},true);
+                if(points[0]){
+                    const dataset = points[0].datasetIndex;
+                    const index = points[0].index;
+                    const label = paralenzLog.data.labels[index];
+                    console.log(paralenzLog.data.datasets[dataset].data[index].mediaName);
+                    document.getElementById('logVideo').src = "."+paralenzLog.data.datasets[dataset].data[index].mediaName;
+
+                }
+                
+            }
+
+            paralenzLog.canvas.onclick = clickOnPoint;
+          </script>
+
+    </body>
+</html>
