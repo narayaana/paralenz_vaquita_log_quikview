@@ -1,234 +1,341 @@
 <html>
 
 <!--
-    code inspired from youtube tutorial: https://www.youtube.com/watch?v=5H1s59jBmpw
+    This is a simple html pages to display Paralenz Vaquita's Log info and media.
+    Disclaimer, I am a dba, not a web developper, so, of course, there will be a lot
+    of glitches.
+    I will just be happy other people find interest in this.
+    If you know how to fix these, please contribute there:
+        * https://github.com/narayaana/paralenz_vaquita_log_quikview
+    . If you just wanna say what's wrong in there, I already know, no need to mention.
+
+    The code was loosely inspired from youtube tutorial:
+        * https://www.youtube.com/watch?v=5H1s59jBmpw
 -->
     <head>
-        <title>Your Vaquita Log</title>
+        <title>Paralenz Vaquita 2nd : Dive Logs</title>
+
         <style type="text/css">
             .chartBox{
                 width: 80%;
                 background: #132f32;
-            },
-            .mediaBox{
-                width: 80%;
-                background: #132f32;
             }
         </style>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
     </head>
     <body>
+
         <div class="chartBox">
             <table border="0">
                 <tr>
-                    <td width="66%">
-            <canvas id="paralenzLog"></canvas>
-        </td><td>
-            <div class="mediaBox" style="visibility:visible;">
-                <img id="logImage" src="" alt="">
-                <video id="logVideo" width="320" height="240" controls autoplay>
-                    <source id="" src="" type="video/mp4">
-                  Your browser does not support the video tag.
-                </video>
-            </div>
-        </td>
-        </tr>
+                    <td width="70%">
+                        <canvas id="paralenzLog"></canvas>
+                    </td>
+                    <td>
+                        <center>
+                        <div class="mediaBox">
+                            <img id="logImage" width="320" height="240" src="" style="display: none;"/>
+                            <video id="logVideo" width="320" height="240" controls autoplay style="display: block;">
+                                <source id="" src="" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                        </center>
+                    </td>
+                </tr>
             </table>
-          </div>
-
-          <div class="buttonBox">
-            <input type="file" id="paralenzLogFile" accept=".csv"/>
-            <button id="uploadLogFile">Submit file</button>
-            <hr/>
-            <button onclick="updateChart('logDepth')">Show graph</button>
-          </div>
-
-
-
-
+        </div>
           
-          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-          <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
-          
-          <script>
 
-            // construct values
+        <div class="buttonBox">
+            <input type="file" id="paralenzLogFile" accept=".csv" />
+            <button id="uploadLogFile">process file</button>
+            <button onclick="updateChart('logDepth')">Show dive log</button>
+        </div>
 
-            function logValue(id, dateTime, depth, mediaName) {
+    </body>
 
-                this.dateTime = new Date(dateTime);
-                this.time = dateTime.substring(11,19);
-                this.depth = depth;
-                this.mediaName = mediaName;
-                this.title = "Depth : " + depth + "\r\nTime : " + dateTime;
-                this.mediaType = (mediaName.length > 24)?mediaName.substring(24,27):"";
-                this.preview = (mediaName.length > 15)?"./DCIM/100PRLNZ/"+mediaName.substring(15,23)+"_LOWRES.JPG":"";
-                this.id = this.time;
+    <script>
+
+
+        /***
+         ***    This is a contruct object to hold various values from each rows
+         ***    x should be time,
+         ***    y should be depth
+         ***    a value could b
+         ***/
+        function logValue(id, dateTime, depth, mediaName, temperature) {
+
+            //raw data
+            this.dateTime = new Date(dateTime);
+            this.depth = depth;
+            this.mediaName = mediaName;
+            this.temperature = temperature;
+
+            //formatted data
+            // just HH:mm:ss
+            this.time = dateTime.substring(11,19); 
+            // depth and time
+            this.title = "Depth : " + depth + "\r\nTime : " + dateTime;
+            // not sure how to override the graph value yet
+            this.label = "";
+            // types e.g. "MP4", "JPG", ""
+            this.mediaType = (mediaName.length > 24)?mediaName.substring(24,27):""; 
+            // There is a low res photo for each vid, using it for display
+            this.preview = (mediaName.length > 15)?"./DCIM/100PRLNZ/"+mediaName.substring(15,23)+"_LOWRES.JPG":""
+            // not sure what to do this id yet
+            this.id = id;
+        }
+
+        logValue.prototype.toString = function () {
+            return this.id;
+        };
+
+        /***
+         ***    These are the arrays holding the data we need for each graph on the canvas
+         ***/
+        var loggedDepths        = [];
+        var loggedTemperatures  = [];
+        var loggedVideos        = [];
+        var loggedImages        = [];
+
+        /***
+         ***    default colors and medias
+         ***/
+        var mediaPreview = new Image(32,32);
+        const depthColor = "rgba(164,215,184,1)";
+        const temperatureColor = "rgba(255,133,0,1)";
+        const videoColor = "rgba(255,0,0,1)";
+        const imageColor = "rgba(0,0,255,1)";
+
+        /***
+         ***    definition of the canvas base
+         ***/
+
+        const data = {
+            labels: ['00:00:00','23:59:59'],
+            datasets: [{
+                type: "line",
+                label: 'Depth',
+                data: [0, 100],
+                //yAxisID : 'depth',
+                borderColor: depthColor,
+                backgroundColor: depthColor,
+                order : 10
+            },{
+                type: "line",
+                label: 'Temperature',
+                data: [4, 40],
+                //yAxisID : 'temperature',
+                borderColor: temperatureColor,
+                backgroundColor: temperatureColor,
+                order : 11
+            },{
+                type: "scatter",
+                label: 'Video',
+                data: [0, 100],
+                //yAxisID : 'depth',
+                borderColor: videoColor,
+                backgroundColor: videoColor,
+                order : 2
+            },{
+                type: "scatter",
+                label: 'Photo',
+                data: [0, 100],
+                //yAxisID : 'depth',
+                borderColor: imageColor,
+                backgroundColor: imageColor,
+                order : 1
             }
-
-            logValue.prototype.toString = function () {
-                    return this.id;
-            };
-
-            // setup
-            const data = {
-                labels: ['00:00:00','23:59:59'],
-                datasets: [{
-                  label: 'logged Depth',
-                  data: [0, 100]
-                }]
-            };
+            ]
+        };
 
 
-            // config
-            var logImage = new Image(32,32);
 
-            const configuration = {
-                type: 'line',
-                data,
-                options: {
-                    elements: {
-                        line : {
-                            borderWidth : 1,
-                            borderColor : "rgba(164,215,184,1)",
-                            backgroundColor : "rgba(164,215,184,1)",
-                        },
-                        point:{
-                            radius : 1,
-                            borderColor : function(context) {
-                                
-                                const defaultColor = "rgba(164,215,184,1)";
-
-                                if (context.raw.preview == null) return defaultColor;
-
-                                switch(context.raw.mediaType) {
-                                    case "MP4":
-                                        return "rgba(255,0,0,1)";
-                                    case "JPG":
-                                        return "rgba(0,0,255,1)";
-                                    default:
-                                        return defaultColor;
-                                    }
-                                },
-                            backgroundColor : function(context) {
-                                const defaultColor = "rgba(164,215,184,1)";
-
-                                if (context.raw.preview == null) return defaultColor;
-
-                                switch(context.raw.mediaType) {
-                                    case "MP4":
-                                        return "rgba(255,0,0,1)";
-                                    case "JPG":
-                                        return "rgba(0,0,255,1)";
-                                    default:
-                                        return defaultColor;
-                                    }
-                                }
+        const chartConfiguration = {
+            //type: 'line',
+            data,
+            options: {
+                elements: {
+                    bar:{
+                        borderWidth : 2,
+                        borderColor : depthColor,
+                        backgroundColor : depthColor,
+                    },
+                    line : {
+                        borderWidth : 1,
+                        borderColor : depthColor,
+                        backgroundColor : depthColor,
+                    },
+                    point:{
+                        radius : 1,
+                        borderColor : depthColor,
+                        backgroundColor : depthColor
+                    }
+                },
+                parsing: {
+                    yAxisKey : function(context){
+                        switch(context.dataset.label){
+                            case "Temperature": return 'temperature';
+                            default: return 'depth';
                         }
                     },
-                    parsing: {
-                        yAxisKey : 'depth',
-                        xAxisKey : 'time'
+                    xAxisKey : 'time'
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        reverse: true
+                    }
+                },
+                plugins: {
+                    title : {
+                        display : true,
+                        text : 'Vaquita Log'
                     },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            reverse: true,
-                        }
-                    },
-                    plugins: {
-                        title : {
-                            display : true,
-                            text : 'Vaquita Log'
+                    tooltip: {
+                        //usePointStyle: true,
+                        usePointStyle: function(context){
+                            console.log(context);
+                            return true;
                         },
-                        tooltip: {
-                            usePointStyle: true,
-                            callbacks:{
-                                labelPointStyle: (context) => {
+                        callbacks:{
+                            labelPointStyle: (context) => {
+                                mediaPreview = new Image(32,32);
 
-                                    logImage = new Image(32,32);
-                                    logImage.src = context.raw.preview;
-    
+                                switch(context.dataset.label){
+                                    case "Video":
+                                    case "Photo":
+                                        mediaPreview.src = context.raw.preview;
+                                        break;
+                                    default:
 
-                                    return {
-                                        pointStyle: logImage
-
-                                    }
-                                },
-                                title: function(tooltipItem) {
-                                    return tooltipItem[0].raw.title;
                                 }
+                                return {
+                                            pointStyle: mediaPreview
+                                        }
+
+                            },
+                            title: function(tooltipItem) {
+                                return tooltipItem[0].raw.title;
                             }
                         }
                     }
                 }
-            };
+            }
+        };
 
-            // render
-            var paralenzLog = new Chart(
-                document.getElementById('paralenzLog'),
-                configuration
-            );
+        /***
+         ***    Render the charts
+         ***/
+        var logChart = new Chart(
+            document.getElementById('paralenzLog'),
+            chartConfiguration
+        );
 
-            // papa parse
+        document.getElementById('paralenzLog').style.visibility = "hidden";
 
-            var logValues = [];
+        /***
+         ***    These is the function that will load the log data from the csv
+         ***    It makes use of Papa parse library.
+         ***    it is a lot of duplicated array, I know, it just is a draft, I will optimize later
+         ***/
+        const uploadLogFile = document.getElementById('uploadLogFile').addEventListener(
+                                 'click',
+                                 ()=>{
+                                    Papa.parse(
+                                        document.getElementById('paralenzLogFile').files[0],{
+                                            download: true,
+                                            header: true,
+                                            skipEmptyLines: true,
+                                            complete: function(results){
 
-            const uploadLogFile = document.getElementById('uploadLogFile').addEventListener('click',()=>{
-                Papa.parse(document.getElementById('paralenzLogFile').files[0],
-                {
-                    download: true,
-                    header: true,
-                    skipEmptyLines: true,
-                    complete: function(results){
-                        logValues = [];
+                                                loggedDepths        = [];
+                                                loggedTemperatures  = [];
+                                                loggedVideos        = [];
+                                                loggedImages        = [];
 
-                        for(i=0;i < results.data.length;i++){
+                                                for(i=0;i < results.data.length;i++){
 
-                                logValues.push(
-                                    new logValue(
-                                         results.data[i].time
-                                        ,results.data[i].ISO8601
-                                        ,results.data[i].Depth
-                                        ,results.data[i]["Image/video-file"]
-                                        )
+                                                    var currentLogValue = new logValue(
+                                                            results.data[i].Time,
+                                                            results.data[i].ISO8601,
+                                                            results.data[i].Depth,
+                                                            results.data[i]["Image/video-file"],
+                                                            results.data[i].Temperature
+                                                        );
+                                                    
+                                                    loggedDepths.push(currentLogValue);
+                                                    loggedTemperatures.push(currentLogValue);
+
+
+                                                    switch(currentLogValue.mediaType) {
+                                                        case "MP4":
+                                                            loggedVideos.push(currentLogValue);
+                                                            break;
+                                                        case "JPG":
+                                                            loggedImages.push(currentLogValue);
+                                                            break;
+                                                        default:
+                                                            break;
+                                                    }
+                                                };
+                                            }
+                                        }
+                                    );
+                                    }
                                 );
 
-                        };
-                    }
-                });
-            });
+        /***
+         ***    update rendering
+         ***/
+         function updateChart(label){
 
-            function updateChart(label){
+            if(logChart != null){
+                logChart.destroy();
+            }
+            logChart = new Chart(
+                document.getElementById('paralenzLog'),
+                chartConfiguration
+            );
+            logChart.data.datasets[0].data = loggedDepths;
+            logChart.data.datasets[1].data = loggedTemperatures;
+            logChart.data.datasets[2].data = loggedVideos;
+            logChart.data.datasets[3].data = loggedImages;
+            logChart.update();
+            document.getElementById('paralenzLog').style.visibility = "visible";
+        };
 
-                if(paralenzLog != null){
-                    paralenzLog.destroy();
-                }
-                paralenzLog = new Chart(
-                    document.getElementById('paralenzLog'),
-                    configuration
-                );
-                //paralenzLog.canvas.onClick = clickOnPoint;
-                paralenzLog.data.datasets[0].data = logValues;
-                paralenzLog.update();
-            };
-
-            
-            function clickOnPoint(clickedPoint){
-                console.log(clickedPoint);
-                const points = paralenzLog.getElementsAtEventForMode(clickedPoint,'nearest',{intersect: true},true);
+        function clickOnPoint(clickedPoint){
+                const points = logChart.getElementsAtEventForMode(clickedPoint,'nearest',{intersect: true},true);
                 if(points[0]){
                     const dataset = points[0].datasetIndex;
                     const index = points[0].index;
-                    const label = paralenzLog.data.labels[index];
-                    console.log(paralenzLog.data.datasets[dataset].data[index].mediaName);
-                    document.getElementById('logVideo').src = "."+paralenzLog.data.datasets[dataset].data[index].mediaName;
+                    const label = logChart.data.labels[index];
+
+                    const value = logChart.data.datasets[dataset].data[index];
+                    switch(value.mediaType){
+                        case "MP4":
+                            document.getElementById('logVideo').src = "."+value.mediaName;
+                            document.getElementById('logVideo').style.display = "block";
+                            document.getElementById('logImage').style.display = "none";
+                            break;
+                        case "JPG":
+                            document.getElementById('logImage').src = "."+value.mediaName;
+                            document.getElementById('logVideo').style.display = "none";
+                            document.getElementById('logImage').style.display = "block";
+                            break;
+                        default:
+                    }
+                    
 
                 }
                 
             }
 
-            paralenzLog.canvas.onclick = clickOnPoint;
-          </script>
+            logChart.canvas.onclick = clickOnPoint;
 
-    </body>
+    </script>
 </html>
