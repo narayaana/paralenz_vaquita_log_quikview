@@ -7,7 +7,7 @@ HOWTO:
 - press on submit button
 - press on show graph.
 
-It is a very simplem, quick and dirty things, many bugs, if you like it, I am just happy with a nice message,
+It is a very simple, quick and dirty things, many bugs, if you like it, I am just happy with a nice message,
 if not, I will ignore and move on.
 If you want to update with a better version, you are more than welcome to participate.
 
