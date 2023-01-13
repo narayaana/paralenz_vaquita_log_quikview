@@ -3,6 +3,7 @@ an hmtl page to locally  visualize vaquita's log and videos
 
 HOWTO:
 - drop the html at the root of your SD Card,
+- open the html file in your browser ( I tested chrome, brave and firefox, firefox on Android has issues displaying the video )
 - press on "choose file" and browse to the log file you want to inspect,
 - press on process file button,
 - press on show dive log.
